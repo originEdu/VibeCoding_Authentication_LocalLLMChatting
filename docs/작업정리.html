@@ -78,8 +78,9 @@
 <table>
   <thead><tr><th>파트</th><th>위치</th><th>상태</th></tr></thead>
   <tbody>
-    <tr><td>FastAPI 인증 서버</td><td><code>server/</code></td><td><span class="badge ok">✓ 구현 + 테스트 12개 통과</span></td></tr>
-    <tr><td>UE5 클라이언트 플러그인</td><td><code>ue5/AuthClient/</code></td><td><span class="badge warn">⚠ 구현 완료, 컴파일 미검증</span></td></tr>
+    <tr><td>FastAPI 인증 서버</td><td><code>server/</code></td><td><span class="badge ok">✓ 테스트 12개 통과 + 실 MySQL 연동 검증</span></td></tr>
+    <tr><td>UE5 클라이언트 플러그인</td><td><code>ue5/AuthClient/</code> · <code>ViveCodingUE/Plugins/</code></td><td><span class="badge ok">✓ UE 5.7 빌드 + PIE 실동작 검증</span></td></tr>
+    <tr><td>UE5 테스트 프로젝트</td><td><code>ue5/ViveCodingUE/</code></td><td><span class="badge ok">✓ 플러그인 통합, WBP_Login + GameMode</span></td></tr>
   </tbody>
 </table>
 </div>
@@ -171,10 +172,14 @@ uvicorn app.main:app --reload   # http://127.0.0.1:8000/docs</code></pre>
   <li>WBP_Login 제작 절차는 <code>ue5/AuthClient/README.md</code> 참고</li>
 </ul>
 
-<h2>5. 검증 상태 (정직한 기록)</h2>
+<h2>5. 검증 상태</h2>
 <div class="note">
-  <p style="margin:0 0 8px"><span class="badge ok">✓ 서버 로직</span> pytest 12개 통과. TestClient로 실제 앱을 HTTP 레벨에서 end-to-end 검증. 단, 테스트는 <strong>인메모리 SQLite</strong>로 실행 — MySQL + Alembic 경로는 이 환경에 MySQL이 없어 직접 실행하지 못함.</p>
-  <p style="margin:0"><span class="badge warn">⚠ UE5 코드</span> 이 환경에 언리얼 엔진이 없어 <strong>컴파일하지 못함</strong>. UE5 규약에 맞춰 작성했으나 실제 프로젝트에서 빌드·검증 필요.</p>
+  <p style="margin:0 0 8px"><span class="badge ok">✓ 서버 로직</span> pytest 12개 통과 (인메모리 SQLite로 로직 검증).</p>
+  <p style="margin:0 0 8px"><span class="badge ok">✓ 실 MySQL 연동</span> MySQL 8.4.9에 <code>auth_db</code> 생성 + <code>alembic upgrade head</code>. signup→login→me→refresh(회전)→logout 전 흐름을 실 DB 대상으로 스모크 테스트 통과.</p>
+  <p style="margin:0"><span class="badge ok">✓ UE5 통합 (실동작)</span> UE 5.7 프로젝트에서 플러그인 빌드 성공. PIE에서 회원가입→로그인 수행, DB로 확인: <code>users</code>에 <strong>bcrypt 해시</strong> 비밀번호 저장(평문 아님), <code>refresh_tokens</code>에 <strong>SHA-256 해시</strong> 토큰 저장(만료 14일).</p>
+</div>
+<div class="note" style="border-left-color:#d97706">
+  <p style="margin:0"><strong>주의 (Windows)</strong> — 서버를 <code>cmd</code> 콘솔로 띄울 때 <strong>창 안을 클릭/드래그하면 QuickEdit 모드로 프로세스가 멈춤</strong>. 멈추면 창 클릭 후 <code>Esc</code>/<code>Enter</code>. 로그는 눈으로만 볼 것.</p>
 </div>
 
 <h2>6. 참고 / 주의</h2>
@@ -186,9 +191,10 @@ uvicorn app.main:app --reload   # http://127.0.0.1:8000/docs</code></pre>
 
 <h2>7. 다음 할 일 (후보)</h2>
 <ul>
-  <li>MySQL 실제 연결 후 <code>alembic upgrade head</code> + 수동 스모크 테스트</li>
-  <li>UE5 프로젝트에서 플러그인 빌드 및 WBP_Login 구성</li>
+  <li><strong>로그아웃 UI</strong>: 현재 위젯엔 로그아웃 버튼 없음. <code>UAuthSubsystem::Logout()</code>은 이미 있으니 버튼만 연결하면 됨. (PIE 종료는 로그아웃이 아니며, 저장된 refresh 토큰으로 자동 로그인됨)</li>
+  <li>탈퇴(<code>Withdraw</code>) / 자동 로그인 UE5 실동작 테스트</li>
   <li>원격 저장소(GitHub 등) 백업</li>
+  <li>(선택) 플러그인 원본과 프로젝트 복사본 중 하나를 정본으로 정리해 드리프트 방지</li>
 </ul>
 
 <footer>
