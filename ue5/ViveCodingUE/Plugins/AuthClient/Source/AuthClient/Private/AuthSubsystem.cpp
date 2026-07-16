@@ -7,6 +7,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Misc/DateTime.h"
 
 const TCHAR* UAuthSubsystem::SaveSlotName = TEXT("AuthClientTokens");
 
@@ -18,6 +19,17 @@ namespace
 		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out);
 		FJsonSerializer::Serialize(Obj, Writer);
 		return Out;
+	}
+
+	/** 서버의 ISO 8601 created_at 을 "YYYY-MM-DD HH:MM" 으로. 파싱 실패 시 날짜(앞 10자)만. */
+	FString FormatCreatedAt(const FString& Iso)
+	{
+		FDateTime Dt;
+		if (FDateTime::ParseIso8601(*Iso, Dt))
+		{
+			return Dt.ToString(TEXT("%Y-%m-%d %H:%M"));
+		}
+		return Iso.Left(10);
 	}
 }
 
@@ -78,18 +90,64 @@ FString UAuthSubsystem::ExtractError(FHttpResponsePtr Response, bool bConnected)
 {
 	if (!bConnected || !Response.IsValid())
 	{
-		return TEXT("서버에 연결할 수 없습니다.");
+		return TEXT("서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해 주세요.");
 	}
+
 	TSharedPtr<FJsonObject> Json;
-	if (ParseJson(Response, Json))
+	ParseJson(Response, Json);
+
+	// 문자열 detail(400/401 등) -> 사용자 친화 메시지로 매핑.
+	FString Detail;
+	if (Json.IsValid() && Json->TryGetStringField(TEXT("detail"), Detail))
 	{
-		FString Detail;
-		if (Json->TryGetStringField(TEXT("detail"), Detail))
+		if (Detail == TEXT("Invalid credentials"))
 		{
-			return Detail;
+			return TEXT("이메일 또는 비밀번호가 올바르지 않습니다.");
 		}
+		if (Detail == TEXT("Account is inactive"))
+		{
+			return TEXT("탈퇴했거나 사용할 수 없는 계정입니다.");
+		}
+		if (Detail == TEXT("Email already registered"))
+		{
+			return TEXT("이미 가입된 이메일입니다. 다른 이메일을 사용해 주세요.");
+		}
+		if (Detail == TEXT("Invalid refresh token"))
+		{
+			return TEXT("세션이 만료되었습니다. 다시 로그인해 주세요.");
+		}
+		return Detail;  // 알 수 없는 메시지는 서버 원문 그대로 노출.
 	}
-	return FString::Printf(TEXT("요청 실패 (HTTP %d)"), Response->GetResponseCode());
+
+	// 검증 오류(422): detail 이 배열 -> 첫 항목의 필드명으로 안내.
+	const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+	if (Json.IsValid() && Json->TryGetArrayField(TEXT("detail"), Errors) && Errors->Num() > 0)
+	{
+		FString Field;
+		if (const TSharedPtr<FJsonObject> First = (*Errors)[0]->AsObject())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Loc = nullptr;
+			if (First->TryGetArrayField(TEXT("loc"), Loc) && Loc->Num() > 0)
+			{
+				Field = (*Loc)[Loc->Num() - 1]->AsString();  // 예: ["body","password"] -> "password"
+			}
+		}
+		if (Field == TEXT("email"))
+		{
+			return TEXT("이메일 형식이 올바르지 않습니다.");
+		}
+		if (Field == TEXT("password"))
+		{
+			return TEXT("비밀번호는 8자 이상 128자 이하여야 합니다.");
+		}
+		if (Field == TEXT("username"))
+		{
+			return TEXT("사용자 이름은 1자 이상 50자 이하여야 합니다.");
+		}
+		return TEXT("입력값을 확인해 주세요.");
+	}
+
+	return FString::Printf(TEXT("요청에 실패했습니다. (오류 코드 %d)"), Response->GetResponseCode());
 }
 
 // --- 토큰 영속화 ---
@@ -280,9 +338,12 @@ void UAuthSubsystem::HandleMe(FHttpRequestPtr Req, FHttpResponsePtr Res, bool bO
 	TSharedPtr<FJsonObject> Json;
 	if (bOk && Res.IsValid() && EHttpResponseCodes::IsOk(Res->GetResponseCode()) && ParseJson(Res, Json))
 	{
-		const FString Username = Json->GetStringField(TEXT("username"));
 		const FString Email = Json->GetStringField(TEXT("email"));
-		OnMeCompleted.Broadcast(true, FString::Printf(TEXT("%s <%s>"), *Username, *Email));
+		const FString Username = Json->GetStringField(TEXT("username"));
+		const FString Created = FormatCreatedAt(Json->GetStringField(TEXT("created_at")));
+		const FString Info = FString::Printf(
+			TEXT("Email : %s\nUsername : %s\n생성일 : %s"), *Email, *Username, *Created);
+		OnMeCompleted.Broadcast(true, Info);
 	}
 	else
 	{

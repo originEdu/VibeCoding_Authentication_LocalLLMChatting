@@ -4,7 +4,6 @@
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Components/TextBlock.h"
-#include "Engine/GameInstance.h"
 
 void UAuthLoginWidget::NativeConstruct()
 {
@@ -21,8 +20,13 @@ void UAuthLoginWidget::NativeConstruct()
 
 	if (UAuthSubsystem* Auth = GetAuth())
 	{
-		Auth->OnLoginCompleted.AddDynamic(this, &UAuthLoginWidget::OnAuthResult);
-		Auth->OnSignupCompleted.AddDynamic(this, &UAuthLoginWidget::OnAuthResult);
+		Auth->OnLoginCompleted.AddDynamic(this, &UAuthLoginWidget::OnLoginResult);
+
+		// 저장된 refresh 토큰으로 자동 로그인이 이미 끝난 상태라면 바로 채팅으로 이동.
+		if (Auth->IsLoggedIn())
+		{
+			SwapTo(ChatWidgetClass);
+		}
 	}
 }
 
@@ -30,19 +34,9 @@ void UAuthLoginWidget::NativeDestruct()
 {
 	if (UAuthSubsystem* Auth = GetAuth())
 	{
-		Auth->OnLoginCompleted.RemoveDynamic(this, &UAuthLoginWidget::OnAuthResult);
-		Auth->OnSignupCompleted.RemoveDynamic(this, &UAuthLoginWidget::OnAuthResult);
+		Auth->OnLoginCompleted.RemoveDynamic(this, &UAuthLoginWidget::OnLoginResult);
 	}
 	Super::NativeDestruct();
-}
-
-UAuthSubsystem* UAuthLoginWidget::GetAuth() const
-{
-	if (const UGameInstance* GI = GetGameInstance())
-	{
-		return GI->GetSubsystem<UAuthSubsystem>();
-	}
-	return nullptr;
 }
 
 void UAuthLoginWidget::OnLoginClicked()
@@ -52,27 +46,35 @@ void UAuthLoginWidget::OnLoginClicked()
 	{
 		return;
 	}
+
+	const FString Email = EmailBox->GetText().ToString().TrimStartAndEnd();
+	const FString Password = PasswordBox->GetText().ToString();
+	if (Email.IsEmpty() || Password.IsEmpty())
+	{
+		SetStatus(TEXT("이메일과 비밀번호를 입력해 주세요."));
+		return;
+	}
+
 	SetStatus(TEXT("로그인 중..."));
-	Auth->Login(EmailBox->GetText().ToString(), PasswordBox->GetText().ToString());
+	Auth->Login(Email, Password);
 }
 
 void UAuthLoginWidget::OnSignupClicked()
 {
-	UAuthSubsystem* Auth = GetAuth();
-	if (!Auth || !EmailBox || !PasswordBox || !UsernameBox)
-	{
-		return;
-	}
-	SetStatus(TEXT("회원가입 중..."));
-	Auth->Signup(
-		EmailBox->GetText().ToString(),
-		UsernameBox->GetText().ToString(),
-		PasswordBox->GetText().ToString());
+	// 회원가입은 별도 화면에서 진행.
+	SwapTo(SignupWidgetClass);
 }
 
-void UAuthLoginWidget::OnAuthResult(bool bSuccess, const FString& Message)
+void UAuthLoginWidget::OnLoginResult(bool bSuccess, const FString& Message)
 {
-	SetStatus(Message);
+	if (bSuccess)
+	{
+		SwapTo(ChatWidgetClass);
+	}
+	else
+	{
+		SetStatus(Message);
+	}
 }
 
 void UAuthLoginWidget::SetStatus(const FString& Message)
