@@ -8,6 +8,7 @@ Saved/
 # Visual Studio / IDE
 .vs/
 *.sln
+*.slnx
 *.suo
 *.sdf
 *.opensdf
