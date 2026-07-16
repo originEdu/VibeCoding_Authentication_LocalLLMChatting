@@ -8,7 +8,9 @@ public class ViveCodingUETarget : TargetRules
 	public ViveCodingUETarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
-		DefaultBuildSettings = BuildSettingsVersion.V6;
+		// 에디터 타겟과 동일하게 설치 엔진(5.8)의 V7 기본값에 맞춘다.
+		DefaultBuildSettings = BuildSettingsVersion.V7;
+		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_6;
 
 		ExtraModuleNames.AddRange( new string[] { "ViveCodingUE", "AuthClient" } );
 	}
