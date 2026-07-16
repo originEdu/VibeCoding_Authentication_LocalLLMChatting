@@ -196,7 +196,7 @@
 
 <div class="hero">
   <div class="hero-inner">
-    <span class="eyebrow">🗣️ 설계 문서 / 브레인스토밍 결과</span>
+    <span class="eyebrow">🗣️ 설계 문서 · 구현 완료 반영</span>
     <h1>NPC 대화 기능 설계</h1>
     <p>사용자가 자유롭게 입력한 질문에 NPC가 답변하는, UE5 + 로컬 LLM 대화 기능</p>
     <p>NPC의 두뇌 = <code style="color:#fff;background:rgba(255,255,255,.15);border-color:transparent">http://localhost:8080</code> (llama.cpp + Gemma-4-E2B, OpenAI 호환 API)</p>
@@ -206,18 +206,18 @@
       <span class="tag">블로킹 응답</span>
       <span class="tag">멀티턴</span>
       <span class="tag">로그인 게이팅</span>
+      <span class="tag">프로필 오버레이</span>
     </div>
-    <div class="hero-date">작성일: 2026-07-16</div>
+    <div class="hero-date">작성일: 2026-07-16 · 최종 갱신: 2026-07-16 (구현 완료)</div>
   </div>
 </div>
 
 <div class="wrap">
 
   <section>
-    <h2><span class="num">1</span> 배경</h2>
+    <h2><span class="num">1</span> 배경 &amp; 요구사항</h2>
     <p>언리얼 프로젝트(<code>ue5/ViveCodingUE</code>)에 정해진 문답이 아닌 자유 입력형 NPC 대화 기능을 추가한다. 이 프로젝트에는 이미 <code>AuthClient</code> 플러그인이 있어 <code>FHttpModule</code> 기반 비동기 HTTP + JSON 파싱 + UMG 위젯 + 델리게이트 콜백 패턴이 완성되어 있다. 새 기능은 이 <strong>검증된 패턴을 거의 그대로 복제</strong>해 위험을 낮춘다.</p>
 
-    <h3>결정된 요구사항 (브레인스토밍 결과)</h3>
     <div class="tblwrap">
       <table>
         <thead><tr><th>항목</th><th>결정</th><th>이유</th></tr></thead>
@@ -225,97 +225,113 @@
           <tr><td>응답 수신</td><td><strong>블로킹</strong> (완성 응답 한 번에)</td><td>기존 코드가 이미 이 방식 → 스트리밍 대비 구현 단순</td></tr>
           <tr><td>대화 기억</td><td><strong>멀티턴</strong> (메시지 배열 누적)</td><td>이전 질문/답변을 반영한 자연스러운 대화</td></tr>
           <tr><td>NPC 정체성</td><td><strong>지금은 없음</strong></td><td>나중에 한 줄로 채울 수 있게 빈 <code>SystemPrompt</code> 필드만 준비</td></tr>
-          <tr><td>UI 범위</td><td><strong>채팅 위젯 포함</strong></td><td>단, <strong>로그인 후에만</strong> 채팅 화면 진입 가능</td></tr>
-          <tr><td>배치</td><td><strong>기존 <code>AuthClient</code> 플러그인에 추가</strong></td><td>채팅 위젯이 <code>UAuthScreenWidget</code> 공유 헬퍼를 상속 → 동일 모듈이 가장 단순</td></tr>
+          <tr><td>로그인 게이팅</td><td><strong>로그인 성공 후에만</strong> 채팅 진입</td><td>채팅이 로그인 후의 메인 화면</td></tr>
+          <tr><td>프로필 열기</td><td><strong>오버레이</strong> (SwapTo 아님)</td><td>채팅 위에 얹었다 닫으면 대화가 그대로 유지됨</td></tr>
+          <tr><td>배치</td><td><strong>기존 <code>AuthClient</code> 플러그인</strong></td><td>채팅 위젯이 <code>UAuthScreenWidget</code> 공유 헬퍼를 상속 → 동일 모듈이 가장 단순</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
   <section>
-    <h2><span class="num">2</span> 재사용할 기존 패턴 (AuthClient)</h2>
-    <ul>
-      <li><strong><code>AuthSubsystem.cpp</code></strong> — <code>FHttpModule::Get().CreateRequest()</code> → URL/Verb/<code>Content-Type</code> 헤더 → <code>SetContentAsString(body)</code> → <code>OnProcessRequestComplete().BindUObject(...)</code> → <code>ProcessRequest()</code>. 응답은 <code>TJsonReaderFactory</code> + <code>FJsonSerializer::Deserialize</code>로 파싱. 바디 직렬화 헬퍼 <code>JsonToString</code>.</li>
-      <li><strong><code>AuthSubsystem.h</code></strong> — <code>UGameInstanceSubsystem</code> 기반, <code>DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams</code> 결과 델리게이트, <code>UPROPERTY(BlueprintAssignable)</code>로 노출.</li>
-      <li><strong><code>AuthScreenWidget</code></strong> — <code>UUserWidget</code> 추상 베이스. <code>GetAuth()</code>(서브시스템 조회), <code>SwapTo(TSubclassOf&lt;UUserWidget&gt;)</code>(위젯 교체) 헬퍼 제공.</li>
-      <li><strong><code>AuthLoginWidget</code></strong> — <code>meta=(BindWidget)</code> 바인딩, <code>NativeConstruct</code>에서 버튼 <code>OnClicked.AddDynamic</code> + 델리게이트 구독, <code>NativeDestruct</code>에서 <code>RemoveDynamic</code>.</li>
-      <li><strong><code>AuthClient.Build.cs</code></strong> — <code>HTTP</code>, <code>Json</code>, <code>JsonUtilities</code>, <code>UMG</code>, <code>Slate</code>, <code>SlateCore</code> 의존성이 이미 선언됨. <span class="badge ok">추가 의존성 불필요</span></li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="num">3</span> 구현 계획</h2>
-
-    <h3>1) <code>UChatSubsystem</code> (신규) — <code>AuthSubsystem</code> 미러링</h3>
-    <p>파일: <code>Public/ChatSubsystem.h</code>, <code>Private/ChatSubsystem.cpp</code></p>
-    <ul>
-      <li><code>UGameInstanceSubsystem</code> 상속, <code>AUTHCLIENT_API</code></li>
-      <li>상태:
-        <ul>
-          <li><code>FString BaseUrl</code> — 기본값 <code>http://localhost:8080</code></li>
-          <li><code>FString SystemPrompt</code> — 기본값 빈 문자열</li>
-          <li><code>TArray&lt;FChatMessage&gt; History</code> — <code>FChatMessage { FString Role; FString Content; }</code> (USTRUCT)</li>
-        </ul>
-      </li>
-      <li><code>UFUNCTION(BlueprintCallable)</code>:
-        <ul>
-          <li><code>SendMessage(const FString&amp; UserText)</code> — History에 <code>{"user", UserText}</code> 추가 → <code>/v1/chat/completions</code> 바디 조립(SystemPrompt 비어있지 않으면 맨 앞에 system 메시지) → 요청 전송 + <code>HandleChat</code> 바인딩</li>
-          <li><code>ClearHistory()</code>, <code>SetBaseUrl(const FString&amp;)</code>, <code>SetSystemPrompt(const FString&amp;)</code></li>
-        </ul>
-      </li>
-      <li><code>HandleChat(...)</code> (private) — <code>EHttpResponseCodes::IsOk</code> 확인 → <code>choices[0].message.content</code> 파싱 → History에 <code>{"assistant", reply}</code> 추가 → <code>OnChatResponse.Broadcast(true, reply)</code>; 실패 시 <code>Broadcast(false, 에러)</code></li>
-      <li>델리게이트: <code>DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FChatResult, bool, bSuccess, const FString&amp;, Reply)</code> → <code>UPROPERTY(BlueprintAssignable) FChatResult OnChatResponse;</code></li>
-    </ul>
-    <p><strong>전송 바디 예시:</strong></p>
-    <pre><code>{ "messages": [{"role":"user","content":"안녕?"}], "stream": false, "temperature": 0.7 }</code></pre>
-
-    <h3>2) <code>UAuthChatWidget</code> (신규) — <code>AuthLoginWidget</code> 미러링</h3>
-    <p>파일: <code>Public/AuthChatWidget.h</code>, <code>Private/AuthChatWidget.cpp</code></p>
-    <ul>
-      <li><code>UAuthScreenWidget</code> 상속 (→ <code>GetSubsystem&lt;UChatSubsystem&gt;()</code> 조회, <code>SwapTo</code> 사용 가능)</li>
-      <li><code>UPROPERTY(meta=(BindWidget))</code>: <code>UEditableTextBox* InputBox</code>, <code>UButton* SendButton</code>, <code>UTextBlock* ChatLog</code>, <code>UTextBlock* StatusText</code></li>
-      <li><code>NativeConstruct</code>: <code>SendButton-&gt;OnClicked.AddDynamic(...)</code> + <code>Chat-&gt;OnChatResponse.AddDynamic(...)</code> / <code>NativeDestruct</code>에서 해제</li>
-      <li><code>OnSendClicked()</code>: 입력 읽기 → 빈 값이면 무시 → ChatLog에 "You: {text}" 추가 → InputBox 비움 → "..." 표시 → <code>Chat-&gt;SendMessage(text)</code></li>
-      <li><code>OnChatResult(bool, const FString&amp;)</code>: 성공 시 "NPC: {Reply}" 추가, 실패 시 StatusText에 에러</li>
-    </ul>
-
-    <h3>3) 로그인 게이팅</h3>
-    <ul>
-      <li><code>WBP_Profile</code>에 "채팅" 버튼 추가 + <code>AuthProfileWidget</code>에 <code>TSubclassOf&lt;UUserWidget&gt; ChatWidgetClass</code>(<code>EditAnywhere</code>) + 핸들러 <code>SwapTo(ChatWidgetClass)</code> — 로그인→회원가입 이동과 동일 방식</li>
-      <li>로그인 성공 → 프로필 → 채팅 순서라 로그인 없이는 채팅 진입 불가</li>
-    </ul>
-
-    <h3>4) 에디터 수작업 (코드로 생성 불가)</h3>
-    <div class="note warn-note">
-      <p><span class="badge warn">에디터 필요</span> 에디터에서 <code>WBP_Chat.uasset</code> 생성 → 부모 클래스를 <code>UAuthChatWidget</code>으로 지정 → 위젯 이름을 <code>BindWidget</code> 이름(<code>InputBox</code>, <code>SendButton</code>, <code>ChatLog</code>, <code>StatusText</code>)과 정확히 일치. <code>WBP_Profile</code>에 채팅 버튼 배치 후 <code>ChatWidgetClass</code>에 <code>WBP_Chat</code> 지정. (기존 <code>WBP_Login</code>/<code>WBP_Profile</code>/<code>WBP_Signup</code>과 동일)</p>
-    </div>
-  </section>
-
-  <section>
-    <h2><span class="num">4</span> 화면 흐름</h2>
+    <h2><span class="num">2</span> 화면 흐름 (구현 결과)</h2>
     <div class="flow">
       <div class="lane">
-        <span class="node n-login">로그인</span>
-        <span class="edge"><span class="ar">→</span><em>성공</em></span>
-        <span class="node n-profile">프로필</span>
-        <span class="edge"><span class="ar">→</span><em>채팅 버튼</em></span>
-        <span class="node n-chat">채팅</span>
+        <span class="node n-login">WBP_Login</span>
+        <span class="edge"><span class="ar">→</span><em>로그인 성공</em></span>
+        <span class="node n-chat">WBP_Chat (허브)</span>
         <span class="edge"><span class="ar">→</span><em>/v1/chat/completions</em></span>
         <span class="node n-llm">로컬 LLM</span>
       </div>
+      <div class="lane">
+        <span class="node n-chat">WBP_Chat</span>
+        <span class="edge"><span class="ar">→</span><em>프로필보기 (오버레이)</em></span>
+        <span class="node n-profile">WBP_Profile</span>
+        <span class="edge"><span class="ar">→</span><em>돌아가기 = 닫기</em></span>
+        <span class="node n-chat">WBP_Chat (그대로)</span>
+      </div>
     </div>
-    <p>로그인 없이는 채팅 화면에 도달할 경로가 없다.</p>
+    <ul>
+      <li>로그인 성공(및 저장된 토큰으로 자동 로그인) 시 곧바로 <strong>채팅</strong> 화면으로 이동.</li>
+      <li><strong>프로필보기</strong>는 <code>SwapTo</code>로 교체하지 않고 채팅 위에 프로필을 <code>AddToViewport</code>로 얹는다 → 채팅 인스턴스와 대화 로그가 살아있음.</li>
+      <li><strong>돌아가기</strong>는 프로필이 <code>RemoveFromParent</code> 하여 아래 채팅을 그대로 다시 드러냄.</li>
+      <li><strong>로그아웃</strong>은 프로필 오버레이를 닫고, 아래 채팅이 대화 이력을 비운 뒤 로그인 화면으로 복귀.</li>
+    </ul>
   </section>
 
   <section>
-    <h2><span class="num">5</span> 검증 (구현 후)</h2>
+    <h2><span class="num">3</span> 구현 (파일별)</h2>
+
+    <h3>1) <code>UChatSubsystem</code> — <code>AuthSubsystem</code> 미러링</h3>
+    <p>파일: <code>Public/ChatSubsystem.h</code>, <code>Private/ChatSubsystem.cpp</code></p>
     <ul>
-      <li><strong>빌드</strong>: <code>ChatSubsystem</code>, <code>AuthChatWidget</code> 컴파일/링크 오류 없음</li>
-      <li><strong>서버 연결</strong>: <code>localhost:8080</code> 서버가 뜬 상태에서 로그인 → 프로필 → 채팅 진입</li>
-      <li><strong>단발 질문</strong>: "안녕?" 입력 → NPC 답변이 ChatLog에 표시</li>
-      <li><strong>멀티턴</strong>: "방금 뭐라고 했어?" 입력 → 직전 맥락 반영 답변(History 누적 검증)</li>
-      <li><strong>게이팅</strong>: 로그아웃 상태에서 채팅 화면 도달 경로 없음 확인</li>
-      <li><strong>로그</strong>: 서버 콘솔에 매 전송마다 <code>/v1/chat/completions</code> 요청 확인</li>
+      <li><code>UGameInstanceSubsystem</code> 상속, <code>AUTHCLIENT_API</code></li>
+      <li>상태: <code>BaseUrl</code>(기본 <code>http://localhost:8080</code>), <code>SystemPrompt</code>(빈 문자열), <code>TArray&lt;FChatMessage&gt; History</code> (<code>{ Role, Content }</code>)</li>
+      <li><code>SendMessage(UserText)</code> — user 메시지 추가 → <code>/v1/chat/completions</code> 바디 조립(SystemPrompt 있으면 맨 앞 system) → 전송 + <code>HandleChat</code></li>
+      <li><code>ClearHistory()</code>, <code>SetBaseUrl()</code>, <code>SetSystemPrompt()</code></li>
+      <li><code>HandleChat</code> — <code>choices[0].message.content</code> 파싱 → assistant 이력 추가 → <code>OnChatResponse.Broadcast(...)</code></li>
+      <li>델리게이트: <code>FChatResult(bool bSuccess, const FString&amp; Reply)</code> → <code>UPROPERTY(BlueprintAssignable) OnChatResponse</code></li>
+    </ul>
+    <pre><code>{ "messages": [{"role":"user","content":"안녕?"}], "stream": false, "temperature": 0.7 }</code></pre>
+
+    <h3>2) <code>UAuthChatWidget</code> — 로그인 후 메인 허브</h3>
+    <p>파일: <code>Public/AuthChatWidget.h</code>, <code>Private/AuthChatWidget.cpp</code></p>
+    <ul>
+      <li><code>UAuthScreenWidget</code> 상속</li>
+      <li><code>BindWidget</code>: <code>InputBox</code>, <code>SendButton</code>, <code>ChatLog</code>, <code>StatusText</code> / <code>BindWidgetOptional</code>: <code>ProfileButton</code></li>
+      <li>네비게이션: <code>ProfileWidgetClass</code>(WBP_Profile), <code>LoginWidgetClass</code>(WBP_Login — 로그아웃 복귀)</li>
+      <li><code>NativeConstruct</code>: 버튼 바인딩 + <code>OnChatResponse</code> 구독 + <code>OnLogoutCompleted</code> 구독</li>
+      <li><code>OnProfileClicked</code>: <code>CreateWidget(ProfileWidgetClass)</code> + <code>AddToViewport(10)</code> — <strong>채팅은 그대로 두고 위에 얹음</strong></li>
+      <li><code>OnLogoutResult</code>: <code>ClearHistory()</code> 후 <code>SwapTo(LoginWidgetClass)</code></li>
+    </ul>
+
+    <h3>3) <code>UAuthProfileWidget</code> — 채팅 위 오버레이</h3>
+    <p>파일: <code>Public/AuthProfileWidget.h</code>, <code>Private/AuthProfileWidget.cpp</code></p>
+    <ul>
+      <li><code>InfoText</code>, <code>LogoutButton</code>(기존) + <code>BackButton</code>(BindWidgetOptional)</li>
+      <li>화면 전환 대상 클래스 <strong>불필요</strong> — 오버레이라 닫기만 하면 됨</li>
+      <li><code>OnBackClicked</code>: <code>RemoveFromParent()</code> (닫기 → 아래 채팅 노출)</li>
+      <li><code>OnLogoutResult</code>: <code>RemoveFromParent()</code> (오버레이만 닫음, 로그인 복귀는 채팅이 담당)</li>
+      <li>생성 시 <code>GetMe()</code>로 내 정보 표시(기존 동작 유지)</li>
+    </ul>
+
+    <h3>4) <code>UAuthLoginWidget</code> — 성공 시 채팅으로</h3>
+    <ul>
+      <li>로그인 성공(및 자동 로그인) 시 이동 대상을 <code>ProfileWidgetClass</code> → <strong><code>ChatWidgetClass</code></strong>(WBP_Chat)로 변경</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span> 에디터 배선 (코드로 불가)</h2>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>위젯 BP</th><th>부모 클래스</th><th>배치할 위젯(이름 일치)</th><th>클래스 지정</th></tr></thead>
+        <tbody>
+          <tr><td><code>WBP_Login</code></td><td><code>AuthLoginWidget</code></td><td>(기존)</td><td><code>Chat Widget Class</code> = <strong>WBP_Chat</strong></td></tr>
+          <tr><td><code>WBP_Chat</code></td><td><code>AuthChatWidget</code></td><td><code>InputBox</code>, <code>SendButton</code>, <code>ChatLog</code>, <code>StatusText</code>, <code>ProfileButton</code></td><td><code>Profile Widget Class</code> = <strong>WBP_Profile</strong>, <code>Login Widget Class</code> = <strong>WBP_Login</strong></td></tr>
+          <tr><td><code>WBP_Profile</code></td><td><code>AuthProfileWidget</code></td><td><code>InfoText</code>, <code>LogoutButton</code>, <code>BackButton</code></td><td>(없음)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note warn-note">
+      <p><span class="badge warn">주의</span> 프로필 위젯은 <strong>화면을 꽉 채우는 불투명 배경</strong>을 둔다. 안 그러면 아래 채팅이 비쳐 보이고, 가려지지 않은 영역의 채팅 버튼이 클릭될 수 있다.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span> 검증</h2>
+    <ul>
+      <li><span class="badge ok">완료</span> <strong>컴파일</strong>: <code>ViveCodingUEEditor</code> 빌드 성공 — <code>ChatSubsystem</code>, <code>AuthChatWidget</code>, <code>AuthProfileWidget</code>, <code>AuthLoginWidget</code> 컴파일·링크(에러/경고 0)</li>
+      <li><strong>플레이 테스트</strong> (<code>localhost:8080</code> 실행 + 에디터 배선 후):
+        <ul>
+          <li>로그인 성공 → 채팅 진입</li>
+          <li>"안녕?" → NPC 답변 표시</li>
+          <li>"방금 뭐라고 했어?" → 직전 맥락 반영(멀티턴)</li>
+          <li>프로필보기 → 채팅 위에 뜸 → 돌아가기 → <strong>대화 로그 그대로 유지</strong></li>
+          <li>로그아웃 → 로그인 복귀, 재로그인 시 이전 대화 미혼입</li>
+          <li>서버 콘솔에 매 전송마다 <code>/v1/chat/completions</code> 요청 확인</li>
+        </ul>
+      </li>
     </ul>
   </section>
 

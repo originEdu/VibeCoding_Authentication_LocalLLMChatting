@@ -2,11 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "AuthScreenWidget.h"
+#include "Types/SlateEnums.h"
 #include "AuthChatWidget.generated.h"
 
 class UEditableTextBox;
 class UButton;
 class UTextBlock;
+class UScrollBox;
 
 /**
  * NPC 대화 화면 베이스 위젯.
@@ -15,7 +17,8 @@ class UTextBlock;
  * 아래 BindWidget 이름과 동일한 이름의 위젯을 배치하면 자동으로 연결된다:
  *   InputBox (EditableTextBox) - 사용자 질문 입력
  *   SendButton (Button)
- *   ChatLog (TextBlock) - 대화 로그 표시
+ *   ChatLog (TextBlock, Auto Wrap Text 켜기) - 대화 로그 표시
+ *   ChatScroll (ScrollBox, 선택) - ChatLog 를 자식으로 넣으면 새 줄마다 맨 아래로 자동 스크롤
  *   StatusText (TextBlock) - 진행/오류 표시
  *   ProfileButton (Button, 선택) - 프로필 화면을 이 위에 얹어 표시
  * 로그인 성공 후 진입하는 메인 화면이며, 디테일 패널에서
@@ -40,6 +43,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* ChatLog = nullptr;
 
+	/** ChatLog 를 감싸는 스크롤 박스. 배치하면 새 줄마다 맨 아래로 자동 스크롤(선택). */
+	UPROPERTY(meta = (BindWidgetOptional))
+	UScrollBox* ChatScroll = nullptr;
+
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* StatusText = nullptr;
 
@@ -55,9 +62,20 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Chat|Navigation")
 	TSubclassOf<UUserWidget> LoginWidgetClass;
 
+	/**
+	 * 이 NPC의 성격/역할을 정의하는 system 프롬프트. 채팅 화면이 열릴 때 적용된다.
+	 * 비우면 성격 없이 동작. NPC마다 이 값만 다른 WBP_Chat 변형을 만들어 쓰면 된다.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Chat|NPC", meta = (MultiLine = true))
+	FString NpcPersonality;
+
 private:
 	UFUNCTION()
 	void OnSendClicked();
+
+	/** 입력창에서 Enter 로 확정하면 전송한다. */
+	UFUNCTION()
+	void OnInputCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
 	UFUNCTION()
 	void OnProfileClicked();
@@ -68,9 +86,15 @@ private:
 	UFUNCTION()
 	void OnLogoutResult(bool bSuccess, const FString& Message);
 
+	/** 입력창 내용을 전송하고(비어 있지 않으면) 입력창에 다시 포커스한다. 버튼과 Enter 가 공유. */
+	void SubmitInput();
+
 	void AppendLine(const FString& Line);
 	void SetStatus(const FString& Message);
 
 	/** 지금까지의 대화 로그 누적 버퍼. */
 	FString LogBuffer;
+
+	/** NPC 응답을 기다리는 중이면 true. 이 동안에는 새 전송을 무시한다. */
+	bool bWaitingForResponse = false;
 };

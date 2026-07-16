@@ -51,7 +51,7 @@ public:
 	FChatResult OnChatResponse;
 
 private:
-	FString BaseUrl = TEXT("http://localhost:8080");
+	FString BaseUrl = TEXT("http://127.0.0.1:8080");
 	FString SystemPrompt;
 	TArray<FChatMessage> History;
 

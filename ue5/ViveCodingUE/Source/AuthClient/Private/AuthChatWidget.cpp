@@ -4,6 +4,7 @@
 #include "ChatSubsystem.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 
@@ -27,6 +28,11 @@ void UAuthChatWidget::NativeConstruct()
 	{
 		SendButton->OnClicked.AddDynamic(this, &UAuthChatWidget::OnSendClicked);
 	}
+	if (InputBox)
+	{
+		InputBox->OnTextCommitted.AddDynamic(this, &UAuthChatWidget::OnInputCommitted);
+		InputBox->SetKeyboardFocus();  // 채팅 화면 진입 시 입력창에 자동 포커스.
+	}
 	if (ProfileButton)
 	{
 		ProfileButton->OnClicked.AddDynamic(this, &UAuthChatWidget::OnProfileClicked);
@@ -34,6 +40,11 @@ void UAuthChatWidget::NativeConstruct()
 	if (UChatSubsystem* Chat = GetChat(this))
 	{
 		Chat->OnChatResponse.AddDynamic(this, &UAuthChatWidget::OnChatResult);
+
+		// 이 NPC와의 새 대화 시작: 성격을 적용하고 이전 대화 이력을 초기화한다.
+		// (한 번에 한 NPC와 대화하는 방식이라, 채팅 화면을 열 때마다 새 대화로 시작한다.)
+		Chat->SetSystemPrompt(NpcPersonality);
+		Chat->ClearHistory();
 	}
 	if (UAuthSubsystem* Auth = GetAuth())
 	{
@@ -57,22 +68,49 @@ void UAuthChatWidget::NativeDestruct()
 
 void UAuthChatWidget::OnSendClicked()
 {
+	SubmitInput();
+}
+
+void UAuthChatWidget::OnInputCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+	// Enter 로 확정했을 때만 전송한다(포커스 이동 등 다른 커밋은 무시).
+	if (CommitMethod == ETextCommit::OnEnter)
+	{
+		SubmitInput();
+	}
+}
+
+void UAuthChatWidget::SubmitInput()
+{
 	UChatSubsystem* Chat = GetChat(this);
 	if (!Chat || !InputBox)
 	{
 		return;
 	}
 
-	const FString Text = InputBox->GetText().ToString().TrimStartAndEnd();
-	if (Text.IsEmpty())
+	// 이전 질문의 응답을 기다리는 중이면 새 전송을 무시한다(중복 요청/이력 꼬임 방지).
+	if (bWaitingForResponse)
 	{
+		InputBox->SetKeyboardFocus();
 		return;
 	}
 
-	AppendLine(FString::Printf(TEXT("You: %s"), *Text));
-	InputBox->SetText(FText::GetEmpty());
-	SetStatus(TEXT("NPC가 생각 중..."));
-	Chat->SendMessage(Text);
+	const FString Text = InputBox->GetText().ToString().TrimStartAndEnd();
+	if (!Text.IsEmpty())
+	{
+		AppendLine(FString::Printf(TEXT("You: %s"), *Text));
+		InputBox->SetText(FText::GetEmpty());
+		SetStatus(TEXT("NPC가 생각 중..."));
+		bWaitingForResponse = true;
+		if (SendButton)
+		{
+			SendButton->SetIsEnabled(false);  // 대기 중 시각 피드백.
+		}
+		Chat->SendMessage(Text);
+	}
+
+	// 전송 후에도 계속 이어서 입력할 수 있도록 입력창에 다시 포커스한다.
+	InputBox->SetKeyboardFocus();
 }
 
 void UAuthChatWidget::OnProfileClicked()
@@ -104,6 +142,13 @@ void UAuthChatWidget::OnLogoutResult(bool bSuccess, const FString& Message)
 
 void UAuthChatWidget::OnChatResult(bool bSuccess, const FString& Reply)
 {
+	// 성공/실패와 무관하게 대기 상태를 풀어 다시 전송할 수 있게 한다.
+	bWaitingForResponse = false;
+	if (SendButton)
+	{
+		SendButton->SetIsEnabled(true);
+	}
+
 	if (bSuccess)
 	{
 		AppendLine(FString::Printf(TEXT("NPC: %s"), *Reply));
@@ -125,6 +170,10 @@ void UAuthChatWidget::AppendLine(const FString& Line)
 	if (ChatLog)
 	{
 		ChatLog->SetText(FText::FromString(LogBuffer));
+	}
+	if (ChatScroll)
+	{
+		ChatScroll->ScrollToEnd();  // 새 줄이 추가될 때마다 맨 아래로 고정.
 	}
 }
 

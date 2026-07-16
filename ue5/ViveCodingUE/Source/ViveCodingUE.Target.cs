@@ -10,6 +10,6 @@ public class ViveCodingUETarget : TargetRules
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 
-		ExtraModuleNames.AddRange( new string[] { "ViveCodingUE" } );
+		ExtraModuleNames.AddRange( new string[] { "ViveCodingUE", "AuthClient" } );
 	}
 }

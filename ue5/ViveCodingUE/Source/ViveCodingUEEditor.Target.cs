@@ -10,6 +10,6 @@ public class ViveCodingUEEditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 
-		ExtraModuleNames.AddRange( new string[] { "ViveCodingUE" } );
+		ExtraModuleNames.AddRange( new string[] { "ViveCodingUE", "AuthClient" } );
 	}
 }

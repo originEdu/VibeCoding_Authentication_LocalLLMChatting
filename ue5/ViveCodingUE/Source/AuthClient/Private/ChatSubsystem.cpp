@@ -84,6 +84,11 @@ void UChatSubsystem::SendMessage(const FString& UserText)
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req =
 		MakeRequest(TEXT("POST"), TEXT("/v1/chat/completions"), BuildChatBody());
+	// 로컬 LLM은 답변 생성에 수십 초가 걸릴 수 있다(스트리밍 미사용). 생성 동안 서버가 아무 바이트도
+	// 보내지 않으므로, 총 타임아웃(SetTimeout)뿐 아니라 유휴 구간을 재는 활동 타임아웃(기본 30초)도
+	// 함께 늘려야 한다. 그렇지 않으면 30초 유휴에서 요청이 끊겨 연결 실패로 처리된다.
+	Req->SetTimeout(120.f);
+	Req->SetActivityTimeout(120.f);
 	Req->OnProcessRequestComplete().BindUObject(this, &UChatSubsystem::HandleChat);
 	Req->ProcessRequest();
 }
