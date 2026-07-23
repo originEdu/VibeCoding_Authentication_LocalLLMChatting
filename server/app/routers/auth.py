@@ -12,7 +12,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
-from app.services import auth_service
+from app.services import auth_service, chat_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -58,9 +58,10 @@ def refresh(data: RefreshRequest, db: Session = Depends(get_db)) -> TokenRespons
 def logout(
     data: LogoutRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> None:
     auth_service.logout(db, data.refresh_token)
+    chat_service.clear_user(current_user.id)
 
 
 @router.get("/me", response_model=UserResponse)
