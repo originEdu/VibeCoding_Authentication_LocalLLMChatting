@@ -73,7 +73,7 @@ public:
 	FAuthResult OnMeCompleted;
 
 private:
-	FString BaseUrl = TEXT("http://127.0.0.1:8000");
+	FString BaseUrl = TEXT("http://192.168.0.42:8081");
 	FString AccessToken;
 	FString RefreshToken;
 
