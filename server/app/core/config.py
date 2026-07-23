@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
+    llm_base_url: str = "http://127.0.0.1:8080"
+    llm_timeout_seconds: int = 110
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
