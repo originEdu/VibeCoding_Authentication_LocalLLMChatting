@@ -14,3 +14,4 @@ pyyaml
 
 # dev
 pytest
+pytest-asyncio
