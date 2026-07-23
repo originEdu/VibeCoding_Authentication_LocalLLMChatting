@@ -11,18 +11,14 @@
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FChatResult, bool, bSuccess, const FString&, Reply);
 
-/** 대화 이력 한 줄. Role 은 "system"/"user"/"assistant". */
-struct FChatMessage
-{
-	FString Role;
-	FString Content;
-};
+class UAuthSubsystem;
 
 /**
- * 로컬 LLM(llama.cpp, OpenAI 호환 API)과 통신하는 게임 인스턴스 서브시스템.
+ * NPC 대화를 담당하는 게임 인스턴스 서브시스템.
  *
- * 사용자가 입력한 질문을 /v1/chat/completions 로 보내고, NPC 답변을 델리게이트로 통지한다.
- * 대화 이력(History)을 누적해 멀티턴 대화를 지원하며, 매 요청마다 전체 이력을 함께 보낸다.
+ * LLM을 직접 호출하지 않고 FastAPI 서버의 /chat 을 거친다. 대화 이력과 NPC 성격은
+ * 서버가 소유하므로 여기서는 어떤 NPC와 이야기 중인지(NpcId)만 들고 있다.
+ * 서버 주소와 access 토큰은 UAuthSubsystem 이 단일 출처다.
  */
 UCLASS()
 class AUTHCLIENT_API UChatSubsystem : public UGameInstanceSubsystem
@@ -30,38 +26,42 @@ class AUTHCLIENT_API UChatSubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	/** LLM 서버 base URL (기본 http://localhost:8080). 끝에 슬래시 없이. */
+	/** 대화 상대 NPC id (서버 npcs.yaml 의 키, 예: "merchant"). */
 	UFUNCTION(BlueprintCallable, Category = "Chat")
-	void SetBaseUrl(const FString& InBaseUrl);
+	void SetNpcId(const FString& InNpcId);
 
-	/** NPC 정체성을 정의하는 system 프롬프트. 비어 있으면 보내지 않는다. */
+	/** 서버에 보관된 이 NPC와의 대화 이력을 비운다(새 대화 시작). */
 	UFUNCTION(BlueprintCallable, Category = "Chat")
-	void SetSystemPrompt(const FString& InSystemPrompt);
+	void ResetConversation();
 
-	/** 사용자 질문을 이력에 추가하고 LLM에 전송한다. 응답은 OnChatResponse 로 통지. */
+	/** 사용자 질문을 서버로 보낸다. 응답은 OnChatResponse 로 통지. */
 	UFUNCTION(BlueprintCallable, Category = "Chat")
 	void SendMessage(const FString& UserText);
-
-	/** 대화 이력을 비운다(새 대화 시작). */
-	UFUNCTION(BlueprintCallable, Category = "Chat")
-	void ClearHistory();
 
 	// --- 결과 델리게이트 ---
 	UPROPERTY(BlueprintAssignable, Category = "Chat")
 	FChatResult OnChatResponse;
 
 private:
-	FString BaseUrl = TEXT("http://127.0.0.1:8080");
-	FString SystemPrompt;
-	TArray<FChatMessage> History;
+	FString NpcId;
 
-	/** HTTP 요청 생성 헬퍼. */
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> MakeRequest(
-		const FString& Verb, const FString& Path, const FString& Body);
+	/** 401 재시도용으로 잠시 보관하는 질문. */
+	FString PendingMessage;
 
-	/** 현재 이력(+system 프롬프트)으로 /v1/chat/completions 요청 바디를 만든다. */
-	FString BuildChatBody() const;
+	/** 이번 질문에 대해 이미 토큰 갱신 재시도를 했는지. 재시도는 1회로 제한한다. */
+	bool bRetriedAfterRefresh = false;
+
+	UAuthSubsystem* GetAuth() const;
+
+	/** POST 요청 생성. Authorization 헤더와 타임아웃을 붙인다. */
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> MakePost(const FString& Path, const FString& Body);
+
+	void SendChatRequest(const FString& UserText);
 
 	// 응답 핸들러
 	void HandleChat(FHttpRequestPtr Req, FHttpResponsePtr Res, bool bOk);
+
+	/** 401 이후 Auth->Refresh() 결과를 한 번 받기 위한 콜백(동적 델리게이트라 UFUNCTION 필요). */
+	UFUNCTION()
+	void HandleRefreshForRetry(bool bSuccess, const FString& Message);
 };

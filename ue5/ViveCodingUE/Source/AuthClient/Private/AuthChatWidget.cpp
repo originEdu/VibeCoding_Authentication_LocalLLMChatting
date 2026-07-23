@@ -41,10 +41,10 @@ void UAuthChatWidget::NativeConstruct()
 	{
 		Chat->OnChatResponse.AddDynamic(this, &UAuthChatWidget::OnChatResult);
 
-		// 이 NPC와의 새 대화 시작: 성격을 적용하고 이전 대화 이력을 초기화한다.
+		// 이 NPC와의 새 대화 시작: 상대를 지정하고 서버에 남은 이전 이력을 비운다.
 		// (한 번에 한 NPC와 대화하는 방식이라, 채팅 화면을 열 때마다 새 대화로 시작한다.)
-		Chat->SetSystemPrompt(NpcPersonality);
-		Chat->ClearHistory();
+		Chat->SetNpcId(NpcId);
+		Chat->ResetConversation();
 	}
 	if (UAuthSubsystem* Auth = GetAuth())
 	{
@@ -132,11 +132,7 @@ void UAuthChatWidget::OnProfileClicked()
 
 void UAuthChatWidget::OnLogoutResult(bool bSuccess, const FString& Message)
 {
-	// 로그아웃 시 다음 로그인에 이전 대화가 섞이지 않도록 이력을 비우고 로그인 화면으로 복귀.
-	if (UChatSubsystem* Chat = GetChat(this))
-	{
-		Chat->ClearHistory();
-	}
+	// 서버가 로그아웃 시 이 유저의 대화 이력을 파기하므로 클라에서 따로 비울 것이 없다.
 	SwapTo(LoginWidgetClass);
 }
 

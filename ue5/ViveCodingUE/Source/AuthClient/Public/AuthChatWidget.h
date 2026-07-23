@@ -63,11 +63,11 @@ protected:
 	TSubclassOf<UUserWidget> LoginWidgetClass;
 
 	/**
-	 * 이 NPC의 성격/역할을 정의하는 system 프롬프트. 채팅 화면이 열릴 때 적용된다.
-	 * 비우면 성격 없이 동작. NPC마다 이 값만 다른 WBP_Chat 변형을 만들어 쓰면 된다.
+	 * 대화 상대 NPC id. 서버 app/npcs.yaml 의 키와 일치해야 한다(예: "merchant").
+	 * 성격 텍스트 자체는 서버가 소유하므로 여기에는 id만 적는다.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Chat|NPC", meta = (MultiLine = true))
-	FString NpcPersonality;
+	UPROPERTY(EditAnywhere, Category = "Chat|NPC")
+	FString NpcId;
 
 private:
 	UFUNCTION()

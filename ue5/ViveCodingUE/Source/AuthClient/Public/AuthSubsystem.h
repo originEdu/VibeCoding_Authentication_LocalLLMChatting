@@ -56,6 +56,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Auth")
 	bool IsLoggedIn() const { return !AccessToken.IsEmpty(); }
 
+	/** 서버 base URL. ChatSubsystem 이 같은 주소를 쓰도록 여기가 단일 출처다. */
+	const FString& GetBaseUrl() const { return BaseUrl; }
+
+	/** 현재 access 토큰. 비어 있으면 미로그인. */
+	const FString& GetAccessToken() const { return AccessToken; }
+
 	// --- 결과 델리게이트 ---
 	UPROPERTY(BlueprintAssignable, Category = "Auth")
 	FAuthResult OnSignupCompleted;
